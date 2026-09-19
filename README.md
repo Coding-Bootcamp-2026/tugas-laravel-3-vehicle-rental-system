@@ -386,3 +386,112 @@ Route::post('/rentals', [RentalController::class, 'store'])->name('rentals.store
 | **Business Logic** | Controller berhasil menghitung `total_price` dari `price_per_day * duration` secara akurat sebelum simpan. | 30% |
 | **Nested Eager Loading**| View berhasil menampilkan nama Brand kendaraan dari relasi `$rental->vehicle->brand->name` tanpa error. | 25% |
 | **Form Input Dinamis**| Dropdown di halaman *Create* berhasil merender daftar mobil berserta harga sewanya. | 20% |
+
+---
+
+```mermaid
+flowchart TD
+    %% Tahap 1
+    subgraph T1[Tahap 1: Inisialisasi & Konfigurasi]
+        direction TB
+        A1[Jalankan composer create-project laravel/laravel vehicle-rental]
+        A2[Buat database db_vehicle_rental]
+        A3[Konfigurasi file .env]
+        A1 --> A2 --> A3
+    end
+
+    %% Tahap 2
+    subgraph T2[Tahap 2: Pembuatan Skema Migration]
+        direction TB
+        B1[Buat migration brands]
+        B2[Buat migration vehicles]
+        B3[Buat migration rentals]
+        B4[Jalankan php artisan migrate]
+        B1 --> B2 --> B3 --> B4
+    end
+
+    %% Tahap 3
+    subgraph T3[Tahap 3: Pembuatan Model & Relasi]
+        direction TB
+        C1[Buat Model Brand: relasi hasMany vehicles]
+        C2[Buat Model Vehicle: relasi belongsTo brand, hasMany rentals]
+        C3[Buat Model Rental: relasi belongsTo vehicle]
+        C1 --> C2 --> C3
+    end
+
+    %% Tahap 4
+    subgraph T4[Tahap 4: Database Seeder]
+        direction TB
+        D1[Buat VehicleDataSeeder]
+        D2[Isi dummy data Brand & Vehicle]
+        D3[Daftarkan ke DatabaseSeeder.php]
+        D4[Jalankan php artisan db:seed]
+        D1 --> D2 --> D3 --> D4
+    end
+
+    %% Tahap 5
+    subgraph T5[Tahap 5: Controller & Logika Bisnis]
+        direction TB
+        E1[Buat RentalController]
+        E2[Buat method index: load rental dengan vehicle.brand]
+        E3[Buat method create: load dropdown armada]
+        E4[Buat method store: hitung total_price otomatis]
+        E5[Daftarkan route di web.php]
+        E1 --> E2 --> E3 --> E4 --> E5
+    end
+
+    %% Tahap 6
+    subgraph T6[Tahap 6: View Blade]
+        direction TB
+        F1[Buat views/rentals/index.blade.php]
+        F2[Buat views/rentals/create.blade.php]
+        F1 --> F2
+    end
+
+    T1 --> T2
+    T2 --> T3
+    T3 --> T4
+    T4 --> T5
+    T5 --> T6
+```
+
+## Penjelasan Detail Tiap Tahapan
+
+### Tahap 1: Inisialisasi & Konfigurasi
+Fokus tahap ini adalah menyiapkan kerangka proyek.
+1. Menjalankan perintah `composer create-project laravel/laravel vehicle-rental` untuk membuat base instalasi Laravel.
+2. Membuat database baru melalui DBMS (seperti MySQL/MariaDB) dengan nama, misalnya `db_vehicle_rental`.
+3. Mengubah file `.env` untuk menghubungkan proyek Laravel dengan database yang baru saja dibuat.
+
+### Tahap 2: Pembuatan Skema Migration
+Tahap ini digunakan untuk membuat struktur tabel di dalam database secara berurutan agar tidak terjadi masalah _foreign key constraint_.
+1. **Migration `brands`**: Dibuat pertama kali karena tidak memiliki _foreign key_. Tabel ini menyimpan data Merek.
+2. **Migration `vehicles`**: Dibuat kedua karena bergantung pada tabel `brands` (berelasi ke `brand_id`). Tabel ini mencatat armada kendaraan.
+3. **Migration `rentals`**: Dibuat terakhir karena menyimpan catatan penyewaan dan bergantung pada tabel `vehicles` (`vehicle_id`).
+4. Setelah tiga skema siap, eksekusi menggunakan `php artisan migrate`.
+
+### Tahap 3: Pembuatan Model & Relasi
+Langkah ini menyiapkan Model yang akan menghubungkan tabel database dengan sistem Laravel (ORM Eloquent), beserta mendefinisikan hubungan (relasi) antar tabel.
+1. **Model Brand**: Memiliki relasi `hasMany` ke kendaraan (1 Merek punya banyak Kendaraan).
+2. **Model Vehicle**: Memiliki relasi kebalikan `belongsTo` ke Brand, serta relasi `hasMany` ke Rentals (1 Kendaraan dapat disewa berkali-kali).
+3. **Model Rental**: Memiliki relasi `belongsTo` ke Vehicle.
+
+### Tahap 4: Database Seeder (Data Dummy)
+Mengisi data awal ke database agar aplikasi bisa langsung diujicoba tanpa harus repot input manual.
+1. Pembuatan seeder terpisah `VehicleDataSeeder`.
+2. Pengisian data utama Merek (seperti Toyota, Honda) dilanjutkan dengan data Kendaraan yang terhubung ke merek tersebut beserta besaran harga sewanya (`price_per_day`).
+3. Mendaftarkannya di kelas utama `DatabaseSeeder.php` dan mengeksekusinya via terminal `php artisan db:seed`.
+
+### Tahap 5: Controller & Logika Bisnis
+Pusat kontrol dan logika pemrosesan perhitungan total biaya.
+1. Pembuatan `RentalController`.
+2. Method `index()`: Mengambil semua data penyewaan sekaligus menarik relasi bertingkat (Nested Eager Loading) menggunakan `Rental::with('vehicle.brand')`.
+3. Method `create()`: Mengambil daftar armada dan relasi merek untuk dimunculkan pada _dropdown form_.
+4. Method `store()`: Merupakan tempat logika bisnis dieksekusi. Controller mengambil ID kendaraan yang dipilih, melihat harga sewanya (`price_per_day`), dan mengalikannya dengan lama sewa (`duration_days`) untuk mendapatkan `total_price` otomatis sebelum disimpan ke database.
+5. Pembuatan Route Web di file `web.php` untuk mengarahkan URL ke method di dalam controller.
+
+### Tahap 6: View Blade (Tailwind CSS)
+Menyiapkan bagian antarmuka (User Interface) menggunakan komponen Tailwind CSS.
+1. `index.blade.php`: Menampilkan tabel penyewaan. Data relasi bertingkat ditampilkan langsung di tabel (menampilkan nama kendaraan beserta nama merek dari tabel terpisah).
+2. `create.blade.php`: Menampilkan form penyewaan dan melakukan kalkulasi dropdown yang dinamis, menunjukkan nama armada dan harga sewanya.
+
